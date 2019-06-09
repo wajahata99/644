@@ -1,0 +1,827 @@
+clear all
+close all
+
+ipcv = 160;
+jpcv = 30;
+ipmax = ipcv +2;
+jpmax = jpcv +2;
+iumax = ipcv +1;
+jumax = jpcv +2;
+ivmax = ipcv +2;
+jvmax = jpcv +1;
+
+iucv = ipcv-1; jucv = jpcv;
+ivcv = ipcv; jvcv = jpcv-1;
+
+L = 0.6;
+H = 0.02;
+dx = L/ipcv;        
+dy = H/jpcv;
+
+del_x = L/ipcv;     %diffusion length
+del_y = H/jpcv;
+
+%%%%%%%%%%%%%%%%%%%%%%%%
+
+Re = 150;
+rho = 998.3 ; %kg/m3
+mu = 1.002e-3 ; %N.s/m2
+Wu = 0.5;
+Wv = 0.5;
+Wp = 0.8;
+kmax = 5000;
+
+%% Modeling of block
+muc = zeros(ipcv,jpcv);
+muc(:,:)=mu;
+mui = zeros(ipcv+1,jpcv+1);
+mui(:,:)=mu;
+
+muc(1:ipcv/10,jpcv:jpcv/2)=10e45; %block
+mui(1:ipcv/10,jpcv:jpcv/2)=10e45; %block 
+mui(1:ipcv/10,jpcv/2+1)=20*mu; % step wall width viscocity
+mui(ipcv/10+1,1:jpcv/2)=20*mu; % step wall length viscocity 
+mui(ipcv/10+1,jpcv/2+1)=40*mu; % step cornor viscocity 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%
+%Diffusion strengths U
+UDw = zeros(iucv,jucv);
+UDe = zeros(iucv,jucv);
+UDs = zeros(iucv,jucv);
+UDn = zeros(iucv,jucv);
+
+for i=1:iucv
+UDw(i,:) = muc(i,:)*dy/del_x;
+UDe(i,:) = muc(i+1,:)*dy/del_x;
+end
+
+%Left
+UDs(1,1) = mui(2,1)*(1.5*dx)/(0.5*del_y);
+UDs(1,2:jucv) = mui(2,2:jucv)*(1.5*dx)/del_y;
+
+%Inner
+UDs(2:iucv-1,1) = mui(3:iucv,1)*dx/(0.5*del_y);
+UDs(2:iucv-1,2:jucv) = mui(3:iucv,2:jucv)*dx/del_y;
+
+%Right
+UDs(iucv,1) = mui(iucv+1,1)*(1.5*dx)/(0.5*del_y);
+UDs(iucv,2:jucv) = mui(iucv+1,2:jucv)*(1.5*dx)/del_y;
+
+%Left
+UDn(1,1:jucv-1) =  mui(2,2:jucv)*(1.5*dx)/del_y;
+UDn(1,jucv) = mui(2,jucv+1)*(1.5*dx)/(0.5*del_y);
+%inner
+UDn(2:iucv-1,jucv) =  mui(3:iucv,jucv+1)*dx/(0.5*del_y);
+UDn(2:iucv-1,1:jucv-1) = mui(3:iucv,2:jucv)*dx/del_y;
+%right
+UDn(iucv,1:jucv-1) =  mui(iucv+1,2:jucv)*(1.5*dx)/del_y;
+UDn(iucv,jucv) = mui(iucv+1,jucv+1)*(1.5*dx)/(0.5*del_y);
+
+%%%%%%%%%%%%%%%%%%%
+%Diffusion Strength for V
+VDw = zeros(ivcv,jvcv);
+VDe = zeros(ivcv,jvcv);
+VDs = zeros(ivcv,jvcv);
+VDn = zeros(ivcv,jvcv);
+
+%Along Flow direction
+VDs(:,1:jvcv) = muc(:,1:jvcv)*dx/del_y;
+VDn(:,1:jvcv) = muc(:,2:jvcv+1)*dx/del_y;
+
+%Bottom
+VDw(1,1) = mui(1,2)*(1.5*dy)/(0.5*del_x);
+VDw(2:ivcv,1) = mui(2:ivcv,2)*(1.5*dy)/del_x;
+
+%Inner
+VDw(1,2:jvcv-1) = mui(1,3:jvcv)*dy/(0.5*del_x);
+VDw(2:ivcv,2:jvcv-1) = mui(2:ivcv,3:jvcv)*dy/del_x;
+
+%Top
+VDw(1,jvcv) = mui(1,jvcv+1)*(1.5*dy)/(0.5*del_x);
+VDw(2:ivcv,jvcv) = mui(2:ivcv,jvcv+1)*(1.5*dy)/del_x;
+
+%Bottom
+VDe(ivcv,1) = mui(ivcv+1,1)*(1.5*dy)/(0.5*del_x);
+VDe(1:ivcv-1,1) = mui(2:ivcv,1)*(1.5*dy)/del_x;
+
+%Inner
+VDe(ivcv,2:jvcv-1) = mui(ivcv+1,3:jvcv)*dy/(0.5*del_x);
+VDe(1:ivcv-1,2:jvcv-1) = mui(2:ivcv,3:jvcv)*dy/del_x;
+
+%Top
+VDe(ivcv,jvcv) = mui(ivcv+1,jvcv+1)*(1.5*dy)/(0.5*del_x);
+VDe(1:ivcv-1,jvcv) = mui(2:ivcv,jvcv+1)*(1.5*dy)/del_x;
+
+%%%%%%%%%%%%%%%%%%
+%Init
+U = zeros (iumax,jumax);
+V = zeros (ivmax,jvmax);
+U(2:end-1, 2:end-1) = 0.0001;
+V(2:end-1, 2:end-1) = 0.0001;
+
+p = zeros(ipmax,jpmax);
+Ucr = zeros (iumax,jumax);
+Vcr = zeros (ivmax,jvmax);
+pcr = zeros(ipmax,jpmax);
+
+paw = zeros (ipcv,jpcv);
+pae = zeros (ipcv,jpcv);
+pas = zeros (ipcv,jpcv);
+pan = zeros (ipcv,jpcv);
+b    = zeros (ipcv,jpcv);
+
+Res_u = 1.0;
+Res_v = 1.0;
+Res_p = 1.0;
+
+Ru_r = 1.0;
+Rv_r = 1.0;
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%B.C
+
+velocity = Re*mu*2/rho/H;
+for j = 2:jumax/2
+%inlet velocity profile: y/H simplifies to j-1.5/jpcv
+U(1,j)=velocity*(4*(j-1.5)/(jpcv))*(2-4*(j-1.5)/(jpcv));
+end
+
+figure(13)
+plot(U(1,:))
+title('inlet velocity plot')
+
+M_in = sum(U(1,2:jumax-1));
+
+k = 1;
+while (Ru_r > 1e-6)||(Rv_r > 1e-6)||(Res_p > 1e-6)
+%Ucoefs 
+UFw = zeros(iucv,jucv);
+UFe = zeros(iucv,jucv);
+UFs = zeros(iucv,jucv);
+UFn = zeros(iucv,jucv);
+
+for i = 1:iucv
+    UFw(i,:)=rho*(U(i,2:jumax-1))*dy;
+end
+
+for i = 1:iucv-1
+    UFe(i,:)=rho*(U(i+1,2:jumax-1))*dy;
+end
+
+for i = 1:iucv
+    UFs(i,:) = rho*0.5*(V(i+1,1:jvmax-1)+V(i+2,1:jvmax-1))*dx;
+end
+
+for i = 1:iucv-1
+    UFn(i,:) = rho*0.5*(V(i+1,2:jvmax)+V(i+2,2:jvmax))*dx;
+end
+
+Pwabs = abs(UFw./UDw);
+Peabs = abs(UFe./UDe);
+Psabs = abs(UFs./UDs);
+Pnabs = abs(UFn./UDn);
+
+APw = max (0, (1-0.1*Pwabs).*(1-0.1*Pwabs).*(1-0.1*Pwabs).*(1-0.1*Pwabs).*(1-0.1*Pwabs));
+APe = max (0, (1-0.1*Peabs).*(1-0.1*Peabs).*(1-0.1*Peabs).*(1-0.1*Peabs).*(1-0.1*Peabs));
+APs = max (0, (1-0.1*Psabs).*(1-0.1*Psabs).*(1-0.1*Psabs).*(1-0.1*Psabs).*(1-0.1*Psabs));
+APn = max (0, (1-0.1*Pnabs).*(1-0.1*Pnabs).*(1-0.1*Pnabs).*(1-0.1*Pnabs).*(1-0.1*Pnabs));
+
+Uaw = UDw .*APw +max(UFw,0);
+Uae = UDe .*APe +max(-UFe,0);
+Uas = UDs .*APs +max(UFs,0);
+Uan = UDn .*APn +max(-UFn,0);
+
+Uae(iucv,:)=0; % U coef for channel exit 
+
+Uap = Uaw+Uae+Uas+Uan;
+
+%%%%%%%%%%%%%%%%%%%%%
+%Init and Reset
+A = zeros(jucv, 3);
+B = zeros(jucv,1);
+
+%L2R
+for iu=1:iucv    
+    Ui = iu+1;
+    
+    ju=1;      %f               
+    Uj = ju+1;                 
+    B(ju) = Uaw(iu,ju)* U (Ui-1,Uj)+Uae(iu,ju)*U(Ui+1,Uj)...
+           +Uas(iu,ju)*U(Ui,Uj-1) ...
+           +dy*(p(Ui,Uj)-p(Ui+1,Uj)) ...
+           +Uap(iu,ju)*U(Ui,Uj)*(1/Wu-1);
+
+    A(2:jucv,1) = -Uas(iu, 2:jucv);
+    A(1:jucv,2) = Uap(iu, 1:jucv)./Wu;
+    A(1:jucv-1,3) = -Uan(iu, 1:jucv-1);
+
+    for ju=2:jucv-1            
+        Uj = ju+1;             
+        B(ju) = Uaw(iu,ju)* U (Ui-1,Uj)+Uae(iu,ju)*U(Ui+1,Uj)...
+        +dy*(p(Ui,Uj)-p(Ui+1,Uj))+Uap(iu,ju)*U(Ui,Uj)*(1/Wu-1);
+    end    
+    
+    %l
+    ju=jucv;                  
+    Uj = ju+1;                 
+    B(ju) = Uaw(iu,ju)* U (Ui-1,Uj)+Uae(iu,ju)*U(Ui+1,Uj)...
+           +Uan(iu,ju)*U(Ui,Uj+1) ...
+           +dy*(p(Ui,Uj)-p(Ui+1,Uj)) ...
+           +Uap(iu,ju)*U(Ui,Uj)*(1/Wu-1);
+     
+    U(Ui,2:jumax-1)=myTDMA(A,B);    
+end
+
+%Initialize and Reset
+A = zeros(iucv, 3);
+B = zeros(iucv,1);
+
+%B2T
+for ju=1:jucv
+    Uj = ju+1;             
+    %f
+    iu = 1;     
+    Ui = iu+1; 
+    B(iu) = Uas(iu,ju)* U (Ui,Uj-1)+Uan(iu,ju)*U(Ui,Uj+1)...
+           +Uaw(iu,ju)*U(Ui-1,Uj) ...
+           +dy*(p(Ui,Uj)-p(Ui+1,Uj)) ...
+           +Uap(iu,ju)*U(Ui,Uj)*(1/Wu-1);
+
+    %i
+    A(2:iucv,1)=-Uaw(2:iucv,ju);
+    A(1:iucv,2)=Uap(1:iucv,ju)./Wu;
+    A(1:iucv-1,3)=-Uae(1:iucv-1,ju);
+    
+    for iu = 2:iucv-1     
+        Ui = iu+1;        
+        B(iu) = Uas(iu,ju)* U (Ui,Uj-1)+Uan(iu,ju)*U(Ui,Uj+1)...
+               +dy*(p(Ui,Uj)-p(Ui+1,Uj))+Uap(iu,ju)*U(Ui,Uj)*(1/Wu-1);
+    end    
+    
+    %l
+    iu = iucv;    
+    Ui = iu+1; 
+    B(iu) = Uas(iu,ju)* U (Ui,Uj-1)+Uan(iu,ju)*U(Ui,Uj+1)...
+           +Uae(iu,ju)*U(Ui+1,Uj) ...
+           +dy*(p(Ui,Uj)-p(Ui+1,Uj)) ...
+           +Uap(iu,ju)*U(Ui,Uj)*(1/Wu-1);
+    
+    U(2:iumax-1,Uj)=myTDMA(A,B);  
+end
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%Init and Reset
+VFw = zeros(ivcv,jvcv);
+VFe = zeros(ivcv,jvcv);
+VFs = zeros(ivcv,jvcv);
+VFn = zeros(ivcv,jvcv);
+
+for j = 1:jvcv-1
+    VFw(:,j) = rho*0.5*(U(1:iumax-1,j+1)+U(1:iumax-1,j+2))*dy;
+end
+
+for j = 1:jvcv-1
+    VFe(:,j) = rho*0.5*(U(2:iumax,j+1)+U(2:iumax,j+2))*dy;
+end
+
+for j = 2:jvcv
+    VFs(:,j)=rho*(V(2:ivmax-1,j))*dx;
+end
+
+for j = 1:jvcv-1
+    VFn(:,j)=rho*(V(2:ivmax-1,j+1))*dx;
+end
+
+Pwabs = abs(VFw./VDw);
+Peabs = abs(VFe./VDe);
+Psabs = abs(VFs./VDs);
+Pnabs = abs(VFn./VDn);
+
+APw = max (0, (1-0.1*Pwabs).*(1-0.1*Pwabs).*(1-0.1*Pwabs).*(1-0.1*Pwabs).*(1-0.1*Pwabs));
+APe = max (0, (1-0.1*Peabs).*(1-0.1*Peabs).*(1-0.1*Peabs).*(1-0.1*Peabs).*(1-0.1*Peabs));
+APs = max (0, (1-0.1*Psabs).*(1-0.1*Psabs).*(1-0.1*Psabs).*(1-0.1*Psabs).*(1-0.1*Psabs));
+APn = max (0, (1-0.1*Pnabs).*(1-0.1*Pnabs).*(1-0.1*Pnabs).*(1-0.1*Pnabs).*(1-0.1*Pnabs));
+
+Vaw = VDw .*APw +max(VFw,0);
+Vae = VDe .*APe +max(-VFe,0);
+Vas = VDs .*APs +max(VFs,0);
+Van = VDn .*APn +max(-VFn,0);
+
+Vap = Vaw+Vae+Vas+Van;
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%
+%V sol
+%Init and Reset
+A = zeros(jvcv, 3);
+B = zeros(jvcv,1);
+
+for iv=1:ivcv    
+    V_i = iv+1;
+    %f
+    jv=1;                       
+    Vj = jv+1;                 
+    B(jv) = Vaw(iv,jv)* V(V_i-1,Vj)+Vae(iv,jv)*V(V_i+1,Vj)...
+           +Vas(iv,jv)*V(V_i,Vj-1) ...
+           +dx*(p(V_i,Vj)-p(V_i,Vj+1)) ...
+           +Vap(iv,jv)*V(V_i,Vj)*(1/Wv-1);
+    %i   
+    A(2:jvcv,1) = -Vas(iv, 2:jvcv);
+    A(1:jvcv,2) = Vap(iv, 1:jvcv)./Wv;
+    A(1:jvcv-1,3) = -Van(iv, 1:jvcv-1);
+    for jv=2:jvcv-1            
+        Vj = jv+1;             
+        B(jv) = Vaw(iv,jv)* V(V_i-1,Vj)+Vae(iv,jv)*V(V_i+1,Vj)...
+        +dx*(p(V_i,Vj)-p(V_i,Vj+1))+Vap(iv,jv)*V(V_i,Vj)*(1/Wv-1);
+    end
+    
+    %f
+    jv=jvcv;                   
+    Vj = jv+1;                 
+    B(jv) = Vaw(iv,jv)* V(V_i-1,Vj)+Vae(iv,jv)*V(V_i+1,Vj)...
+           +Van(iv,jv)*V(V_i,Vj+1) ...
+           +dx*(p(V_i,Vj)-p(V_i,Vj+1)) ...
+           +Vap(iv,jv)*V(V_i,Vj)*(1/Wv-1);
+     
+    V(V_i,2:jvmax-1)=myTDMA(A,B);    
+end
+
+%Init and Reset
+A = zeros(ivcv, 3);
+B = zeros(ivcv,1);
+
+%B2T
+for jv=1:jvcv
+    Vj = jv+1;
+    %f
+    iv = 1;     
+    V_i = iv+1; 
+    B(iv) = Vas(iv,jv)* V(V_i,Vj-1)+Van(iv,jv)*V(V_i,Vj+1)...
+           +Vaw(iv,jv)*V(V_i-1,Vj) ...
+           +dx*(p(V_i,Vj)-p(V_i,Vj+1)) ...
+           +Vap(iv,jv)*V(V_i,Vj)*(1/Wv-1);
+    
+    %i
+    A(2:ivcv,1)=-Vaw(2:ivcv,jv);
+    A(1:ivcv,2)=Vap(1:ivcv,jv)./Wv;
+    A(1:ivcv-1,3)=-Vae(1:ivcv-1,jv);
+    for iv = 2:ivcv-1     
+        V_i = iv+1;        
+        B(iv) = Vas(iv,jv)* V(V_i,Vj-1)+Van(iv,jv)*V(V_i,Vj+1)...
+               +dx*(p(V_i,Vj)-p(V_i,Vj+1))+Vap(iv,jv)*V(V_i,Vj)*(1/Wv-1);
+    end    
+    %l   
+    iv = ivcv;     
+    V_i = iv+1; 
+    B(iv) = Vas(iv,jv)* V(V_i,Vj-1)+Van(iv,jv)*V(V_i,Vj+1)...
+           +Vae(iv,jv)*V(V_i+1,Vj) ...
+           +dx*(p(V_i,Vj)-p(V_i,Vj+1)) ...
+           +Vap(iv,jv)*V(V_i,Vj)*(1/Wv-1);
+    
+    V(2:ivmax-1,Vj)=myTDMA(A,B);  
+end
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+du = zeros(iumax,jumax);
+dv = zeros(ivmax,jvmax);
+du(2:iumax-1,2:jumax-1) = dy./Uap;
+dv(2:ivmax-1,2:jvmax-1) = dx./Vap;
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+for j = 1:jpcv    
+    for i = 1:ipcv
+            paw(i,j) = rho*du(i,j+1)*dy;            
+            pae(i,j) = rho*du(i+1,j+1)*dy;
+            pas(i,j) = rho*dv(i+1,j)*dx;
+            pan(i,j) = rho*dv(i+1,j+1)*dx;
+            b(i,j) = rho*(U(i,j+1) - U(i+1,j+1))*dy + rho*(V(i+1,j) - V(i+1,j+1))*dx;
+    end
+end
+pap = paw+pae+pas+pan;
+
+%%%%%%%%%%%%%%%%%%%%%%%%
+
+%Init and Reset
+pcr = zeros(ipmax,jpmax);
+A = zeros(jpcv, 3);
+B = zeros(jpcv,1);
+
+%L2R
+for ip=1:ipcv    
+    P_i = ip+1;              
+    %f
+    jp=1;                       
+    P_j = jp+1;                
+    B(jp) = paw(ip,jp)* pcr(P_i-1,P_j)+pae(ip,jp)*pcr(P_i+1,P_j)...
+           +pas(ip,jp)*pcr(P_i,P_j-1)+b(ip,jp);
+
+    %i   
+    A(2:jpcv,1) = -pas(ip, 2:jpcv);
+    A(1:jpcv,2) = pap(ip, 1:jpcv);
+    A(1:jpcv-1,3) = -pan(ip, 1:jpcv-1);
+    for jp=2:jpcv-1           
+        P_j = jp+1;             
+        B(jp) = paw(ip,jp)* pcr(P_i-1,P_j)+pae(ip,jp)*pcr(P_i+1,P_j)...
+                +b(ip,jp);
+    end 
+     
+    %l
+    jp=jpcv;                    
+    P_j = jp+1;                
+    B(jp) = paw(ip,jp)* pcr(P_i-1,P_j)+pae(ip,jp)*pcr(P_i+1,P_j)...
+           +pan(ip,jp)*pcr(P_i,P_j+1)+b(ip,jp);
+    
+    pcr(P_i,2:jpmax-1)=myTDMA(A,B);    
+end
+
+%Init and Reset
+A = zeros(ipcv, 3);
+B = zeros(ipcv,1);
+
+%T2B
+for jp=jpcv:-1:1
+   P_j = jp+1;  
+   %f
+    ip = 1;     
+    P_i = ip+1; 
+    B(ip) = pas(ip,jp)* pcr(P_i,P_j-1)+pan(ip,jp)*pcr(P_i,P_j+1)...
+           +paw(ip,jp)*pcr(P_i-1,P_j)+b(ip,jp);
+
+    %i   
+    A(2:ipcv,1)=-paw(2:ipcv,jp);
+    A(1:ipcv,2)=pap(1:ipcv,jp);
+    A(1:ipcv-1,3)=-pae(1:ipcv-1,jp);
+    for ip = 2:ipcv-1     
+        P_i = ip+1;        
+        B(ip) = pas(ip,jp)* pcr(P_i,P_j-1)+pan(ip,jp)*pcr(P_i,P_j+1)...
+                +b(ip,jp);
+    end
+        
+    %l      
+    ip = ipcv;     
+    P_i = ip+1; 
+    B(ip) =pas(ip,jp)* pcr(P_i,P_j-1)+pan(ip,jp)*pcr(P_i,P_j+1)...
+           +pae(ip,jp)*pcr(P_i+1,P_j)+b(ip,jp);
+    
+   pcr(2:ipmax-1,P_j)=myTDMA(A,B);  
+end
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+Ucr(2:iumax-1, 2:jumax-1) = du(2:iumax-1, 2:jumax-1).*(pcr(2:iumax-1, 2:jumax-1) - pcr(3:iumax, 2:jumax-1));
+Vcr(2:ivmax-1,2:jvmax-1) = dv(2:ivmax-1,2:jvmax-1).*(pcr(2:ivmax-1,2:jvmax-1) - pcr(2:ivmax-1,3:jvmax));
+
+U = U + Ucr;
+V = V + Vcr;
+p = p + pcr .* Wp;
+% %%%%%%%%%%%%%%%%%%%%%%%
+if k==1
+    Racc = 1;
+else
+    Racc = M_in/sum(U(iumax,2:jumax-1));
+end
+U(iumax,:)=Racc.*U(iumax-1,:);
+%U(iumax,:)=velocity;
+
+%%%%%%%%%%%%%%%%%%%%%%%
+
+ap_up = Uap.*U(2:iumax-1,2:jumax-1);
+anb_unb = Uaw.*U(1:iumax-2,2:jumax-1)+Uae.*U(3:iumax,2:jumax-1)...
+         +Uas.*U(2:iumax-1,1:jumax-2)+Uan.*U(2:iumax-1,3:jumax)...
+         +dy*(p(2:iumax-1,2:jumax-1)-p(3:iumax,2:jumax-1));
+
+ap_vp = Vap.*V(2:ivmax-1,2:jvmax-1);
+anb_vnb = Vaw.*V(1:ivmax-2,2:jvmax-1)+Vae.*V(3:ivmax,2:jvmax-1)...
+         +Vas.*V(2:ivmax-1,1:jvmax-2)+Van.*V(2:ivmax-1,3:jvmax)...
+         +dx*(p(2:ivmax-1,2:jvmax-1)-p(2:ivmax-1,3:jvmax));
+
+flux_c = (U(1:iumax-1,2:jumax-1) - U(2:iumax,2:jumax-1))*dy ...
+        +(V(2:ivmax-1,1:jvmax-1) - V(2:ivmax-1,2:jvmax))*dx;
+        
+Res_u = sum(sum(abs(ap_up-anb_unb)))/sum(sum(abs(ap_up)));
+Res_v = sum(sum(abs(ap_vp-anb_vnb)))/sum(sum(abs(ap_vp)));
+Res_p = sum(sum(abs(flux_c)))/velocity/L;
+
+if k~=1 %aproximated
+    Ru_r = abs((Res_u-R(1,k-1))./R(1,k-1));
+    Rv_r = abs((Res_v-R(2,k-1))./R(2,k-1));
+end
+R(:,k)=[Res_u,Res_v,Res_p];
+disp([Ru_r,Rv_r,Res_p]);
+%disp('Papi Papi ... papi chulo')
+
+    k = k+1;
+    
+    if k>kmax
+       break
+    end
+end
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+Ti =1;
+itcv = ipcv;
+jtcv = jpcv;
+itmax = itcv+2;
+jtmax = jtcv+2;
+
+cp = 4183;         
+k = 0.609;          
+T_in = 0;           
+qw = -64; %cooled plate          
+Wt=1;
+T = zeros(itmax,jtmax);
+
+for j=1:jtmax/2
+    y_h = (j-1)/jtcv;%y/H simplifies to j-1/jtcv
+    %%%%inlet T profile
+    T(1,j)=1.5*(4*y_h)*(2-(4*y_h));
+end
+
+figure(20)
+plot(T(1,:))
+title('inlet temperature profile')
+
+
+Tres=1.0;
+
+%Diff. Coefs
+TDw = zeros(itcv,jtcv);
+TDe = zeros(itcv,jtcv);
+TDs = zeros(itcv,jtcv);
+TDn = zeros(itcv,jtcv);
+
+TDw(1,:) = k*dy/del_x/2; %half cv at entrance
+TDw(2:itcv,:) = k*dy/del_x;
+
+TDe(1:itcv-1,:) = k*dy/del_x;
+TDe(itcv,:) = k*dy/del_x/2; %half cv at exit
+
+TDs(:,1) = k*dx/del_y/2; %half cv bottom
+TDs(:,2:jtcv) = k*dx/del_y;
+
+TDn(:,1:jtcv-1) = k*dx/del_y; 
+TDn(:,jtcv) = k*dx/del_y/2; %half cv top
+
+%%
+TFw= rho*cp *U(1:iumax-1,2:jumax-1)*dy;
+TFe= rho*cp *U(2:iumax,2:jumax-1)*dy;
+TFs= rho*cp *V(2:ivmax-1,1:jvmax-1)*dx;
+TFn= rho*cp *V(2:ivmax-1,2:jvmax)*dx;
+
+Pwabs = abs(TFw./TDw);
+Peabs = abs(TFe./TDe);
+Psabs = abs(TFs./TDs);
+Pnabs = abs(TFn./TDn);
+
+APw = max (0, (1-0.1*Pwabs).*(1-0.1*Pwabs).*(1-0.1*Pwabs).*(1-0.1*Pwabs).*(1-0.1*Pwabs));
+APe = max (0, (1-0.1*Peabs).*(1-0.1*Peabs).*(1-0.1*Peabs).*(1-0.1*Peabs).*(1-0.1*Peabs));
+APs = max (0, (1-0.1*Psabs).*(1-0.1*Psabs).*(1-0.1*Psabs).*(1-0.1*Psabs).*(1-0.1*Psabs));
+APn = max (0, (1-0.1*Pnabs).*(1-0.1*Pnabs).*(1-0.1*Pnabs).*(1-0.1*Pnabs).*(1-0.1*Pnabs));
+
+T_aw = TDw .*APw +max(TFw,0);
+T_ae = TDe .*APe +max(-TFe,0);
+T_as = TDs .*APs +max(TFs,0);
+T_an = TDn .*APn +max(-TFn,0);
+
+T_ae(itcv,:)=0; %channel entrance coeff
+T_as(:,1)=0; %bottom wall
+T_an(:,jtcv)=0; %top wall
+T_as(1:itcv/10,jtcv/2+1)=0;%block length wall
+T_aw(itcv/10+1,jtcv:jtcv/2)=0; %block height wall
+
+T_ap = T_aw+T_ae+T_as+T_an;
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%
+while (Tres > 1e-6)
+    Ti = Ti+1;
+    
+%Init and Reset
+A = zeros(jtcv, 3);
+B = zeros(jtcv,1);
+
+%L2R
+for iu=1:itcv    
+    Ui = iu+1;
+    %f
+    ju=1;                       
+    Uj = ju+1;                 
+    B(ju) = T_aw(iu,ju)* T(Ui-1,Uj)+T_ae(iu,ju)*T(Ui+1,Uj)+qw*dx;    
+    
+    %i
+    A(2:jtcv,1) = -T_as(iu, 2:jtcv);
+    A(1:jtcv,2) = T_ap(iu, 1:jtcv);
+    A(1:jtcv-1,3) = -T_an(iu, 1:jtcv-1);
+    for ju=2:jtcv-1            
+        Uj = ju+1;             
+        B(ju) = T_aw(iu,ju)* T(Ui-1,Uj)+T_ae(iu,ju)*T(Ui+1,Uj);
+    end    
+    
+    %l
+    ju=jtcv;                   
+    Uj = ju+1;                
+    B(ju) = T_aw(iu,ju)* T (Ui-1,Uj)+T_ae(iu,ju)*T(Ui+1,Uj)+qw*dx;
+         
+    T(Ui,2:jtmax-1)=myTDMA(A,B);    
+end
+
+%bottom wall
+%Init and Reset
+A = zeros(itcv, 3);
+B = zeros(itcv,1);
+    ju=1;
+    Uj = ju+1; 
+    iu = 1;     
+    Ui = iu+1; 
+    B(iu) = T_an(iu,ju)*T(Ui,Uj+1)...
+           +T_aw(iu,ju)* T(Ui-1,Uj)+qw*dx;
+    
+    A(2:itcv,1)=-T_aw(2:itcv,ju);
+    A(1:itcv,2)=T_ap(1:itcv,ju);
+    A(1:itcv-1,3)=-T_ae(1:itcv-1,ju);
+    
+    for iu = 2:itcv     
+        Ui = iu+1;        
+        B(iu) = T_an(iu,ju)*T(Ui,Uj+1)+qw*dx;
+    end
+    T(2:itmax-1,Uj)=myTDMA(A,B);  
+%B2T
+for ju=2:jtcv-1
+    Uj = ju+1;    
+    iu = 1;     
+    Ui = iu+1; 
+    B(iu) = T_as(iu,ju)* T(Ui,Uj-1)+T_an(iu,ju)*T(Ui,Uj+1)...
+           +T_aw(iu,ju)* T(Ui-1,Uj);
+    
+    A(2:itcv,1)=-T_aw(2:itcv,ju);
+    A(1:itcv,2)=T_ap(1:itcv,ju);
+    A(1:itcv-1,3)=-T_ae(1:itcv-1,ju);
+                
+    for iu = 2:itcv     
+        Ui = iu+1;        
+        B(iu) = T_as(iu,ju)* T(Ui,Uj-1)+T_an(iu,ju)*T(Ui,Uj+1);
+    end
+      
+    T(2:itmax-1,Uj)=myTDMA(A,B);  
+end
+
+%top wall
+ju=jucv;
+    Uj = ju+1;            
+    
+    iu = 1;     
+    Ui = iu+1; 
+    B(iu) = T_as(iu,ju)* T(Ui,Uj-1)+T_aw(iu,ju)* T(Ui-1,Uj)+qw*dx;
+    
+    A(2:itcv,1)=-T_aw(2:itcv,ju);
+    A(1:itcv,2)=T_ap(1:itcv,ju);
+    A(1:itcv-1,3)=-T_ae(1:itcv-1,ju);
+            
+    for iu = 2:itcv     
+        Ui = iu+1;        
+        B(iu) = T_as(iu,ju)* T(Ui,Uj-1)+qw*dx;
+    end
+      
+    T(2:itmax-1,Uj)=myTDMA(A,B);
+    
+    %%%%%%%%%%%%%%%
+
+    T(itmax,:)=T(itmax-1,:);%setting chnl exit to prev. mesh
+    T(:,1)=T(:,2)+1/k*dy/2*qw; %setting chnl bottom wall to prev. mesh
+    T(:,jtmax)=T(:,jtmax-1)+1/k*dy/2*qw;%setting chnl top wall to prev. mesh
+    T(1:itmax/10+1,jtmax:jtmax/2)=0; %Adiabatic block
+    
+    %%%%%%%%%%%%%%%
+
+    ap_up = T_ap.*T(2:itmax-1,2:jtmax-1);
+    anb_unb = T_aw.*T(1:itmax-2,2:jtmax-1)+T_ae.*T(3:itmax,2:jtmax-1)...
+             +T_as.*T(2:itmax-1,1:jtmax-2)+T_an.*T(2:itmax-1,3:jtmax);
+
+    R_T(Ti) = sum(sum(abs(ap_up-anb_unb)))/sum(sum(abs(ap_up)));
+    Tres = (R_T(Ti)-R_T(Ti-1))./R_T(Ti-1);
+    Ti
+    if Ti>kmax
+       break
+    end
+end
+
+figure(10)
+contourf(U)
+title('U contour')
+
+
+figure(11)
+contourf(T);
+title('T contour')
+
+%1(a)T profile for diff X locations
+xaxis = linspace(0,0.02,jumax);
+figure(1)
+hold on
+ii=round(((0.02*6+0.06))*160);
+plot(xaxis, T(ii,:),'r--');
+
+ii=round(((0.02*12+0.06))*160);
+plot(xaxis, T(ii,:),'g--');
+
+ii=round(((0.02*24+0.06))*160);
+plot(xaxis, T(ii,:),'b--');
+hold off
+legend('X-b/H=6','X-b/H=12','X-b/H=24');
+xlabel('H')
+ylabel('T')
+title('T(y) at 3 locations along the channel')
+
+%1(b) Temperature profile for upper and lower wall
+figure(2)
+yy = linspace(0,0.6,itmax);
+hold on 
+plot (yy, T(:,1), 'b--');
+plot (yy, T(:,jtmax), 'b--');
+hold off
+%ylim([-1,1])
+title('Tw along the channel')
+xlabel('L')
+ylabel('T')
+
+for i = 1: iumax
+    T_bulk(i) = sum(T(i,:).*U(i,:))/sum(U(i,:));
+end
+
+%1(c) Nu along the channel length for both upper and lower wall
+Nu_l = qw./(T(1:iumax,1)-T_bulk(:))*2*H/k;
+Nu_u = qw./(T(1:iumax,jumax)-T_bulk(:))*2*H/k;
+figure(3)
+xx = linspace (0,2,iumax);
+hold on 
+plot (xx, Nu_u, 'r--');
+plot (xx, Nu_l, 'ro-');
+hold off
+title('Nusselt Number')
+ylim([-100,100])
+legend('Nu_{Top wall}','Nu_{bottom wall}');
+xlabel('x')
+ylabel('Nu')
+
+%2(a) Reattachment lenght
+Re_h=mean(U(17,:))*H/2/mu*rho
+reattach=2.13+0.021*Re_h
+
+
+%2(b) U 
+xaxis = linspace(0,0.02,jumax);
+figure(4)
+hold on
+ii=round(((0.02*6+0.06))*160);
+plot(xaxis, U(ii,:),'r--');
+
+ii=round(((0.02*12+0.06))*160);
+plot(xaxis, U(ii,:),'g--');
+
+ii=round(((0.02*24+0.06))*160);
+plot(xaxis, U(ii,:),'b--');
+hold off
+legend('X-b/H=6','X-b/H=12','X-b/H=24');
+xlabel('H')
+ylabel('U')
+title('U')
+
+%2(c) V
+figure(5)
+hold on
+ii=round(((0.02*6+0.06))*160);
+plot( V(ii,:),'r-');
+
+ii=round(((0.02*12+0.06))*160);
+plot(V(ii,:),'g--');
+
+ii=round(((0.02*24+0.06))*160);
+plot( V(ii,:),'bo-');
+hold off
+legend('X-b/H=6','X-b/H=12','X-b/H=24');
+xlabel('H')
+ylabel('V')
+title('V at 3 diff. locations along the channel')
+
+%TDMA
+ function x=myTDMA(A,r)
+ e=A(:,1);
+ f=A(:,2);
+ g=A(:,3);
+ 
+ n=length(r);
+ x=zeros(n,1);
+ for k=2:n
+    % decomposition LU
+     e(k)=e(k)/f(k-1);
+     f(k)=f(k)-e(k)*g(k-1);
+ end
+ for k=2:n
+     %forward sub
+     r(k)=r(k)-e(k)*r(k-1);
+ end
+ 
+ %backward sub
+ x(n)=r(n)/f(n);
+ for k=n-1:-1:1
+     x(k)=(r(k)-g(k)*x(k+1))/f(k);
+ end
+ end

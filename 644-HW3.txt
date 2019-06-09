@@ -1,0 +1,245 @@
+clear all
+close all
+
+%2D Heat Equation.
+clear; close all; clc
+imax = 35;  
+jmax = 35;  
+
+X=0.5;
+x = linspace(0,X,imax);
+dx = X/(imax-2);  
+dxe=dx;
+dxw=dx;
+
+Y = 0.5; 
+y = linspace(0,Y,jmax);
+dy = Y/(jmax-2);
+dyn=dy;
+dys=dy;
+
+TOL = 1e-5;     
+
+T = ones(imax,jmax)*30;
+
+T(1,1:imax) = 100; %TOP
+T(imax,1:imax) = 50;  %BOTTOM
+T(1:jmax,1) = 50;  %LEFT
+%T(1:jmax,jmax) = 0;  %RIGHT    #######Update:insulation BC#####
+
+k=386; %thermal conductivity
+W=1.1; %over relaxation factor    #######Update:make vector#####
+
+error = 1; %error initialization
+
+%Not internal control volumes and internal control colume
+a=ones(imax,jmax)*k; %internal nodes
+a(1,:)=k*2; %top
+a(:,1)=k*2; %left
+a(jmax,:)=k*2; %bottom
+a(:,imax)=0; %right
+ap=@(i,j) a(i-1,j)+a(i+1,j)+a(i,j-1)+a(i,j+1);%an+as+aw+ae
+ap_noeast=@(i,j) a(i-1,j)+a(i+1,j)+a(i,j-1);%an+as+aw+ae
+
+%mapping w=j-1; e=j+1, n=i-1, s=i+1
+
+kk=1;
+for kk=1:5
+%% 1    
+%implicit in y: Y direction TDMA and sweep left to right
+    for j=2:jmax %sweep
+        
+        %1st eq
+        i=2;
+        A(i,1)=0;%n
+        if j==jmax
+            A(i,2)=ap_noeast(i,j);
+        B(i,1)=a(i,j-1)*T(i,j-1)+ap_noeast(i,j)*T(i,j)*(1/W-1)...
+            +a(i-1,j)*T(i-1,j); %last term is North
+        else
+        A(i,2)=ap(i,j);%p
+        B(i,1)=a(i,j-1)*T(i,j-1)+ap(i,j)*T(i,j)*(1/W-1)...
+            +a(i,j+1)*T(i,j+1)+a(i-1,j)*T(i-1,j); %last term is North
+        end
+        A(i,3)=-a(i+1,2);%s
+
+        
+        %internal eqs
+        for i=3:imax-2
+            A(i,1)=-a(i-1,j);%n
+            if j==jmax
+                A(i,2)=ap_noeast(i,j);%
+                B(i,1)=a(i,j-1)*T(i,j-1)+ap_noeast(i,j)*T(i,j)*(1/W-1)...
+                ;
+            else
+                A(i,2)=ap(i,j);%p
+                B(i,1)=a(i,j-1)*T(i,j-1)+ap(i,j)*T(i,j)*(1/W-1)...
+                +a(i,j+1)*T(i,j+1);
+            end
+                A(i,3)=-a(i+1,j);%s
+
+        end
+        
+        %last eq
+        i=imax-1;%%%%%%%%%%%%%
+        A(imax-1,1)=-a(imax-2,j);%n
+        if j==jmax
+        A(imax-1,2)=ap_noeast(imax-1,j);%p
+        B(imax-1)=a(i,j-1)*T(i,j-1)+ap_noeast(i,j)*T(i,j)*(1/W-1)...
+            +a(i+1,j)*T(i+1,j);%last term is South    
+        else
+        A(imax-1,2)=ap(imax-1,j);%p
+        B(imax-1)=a(i,j-1)*T(i,j-1)+ap(i,j)*T(i,j)*(1/W-1)...
+            +a(i,j+1)*T(i,j+1)+a(i+1,j)*T(i+1,j);%last term is South    
+        end
+        A(imax-1,3)=0;%s
+        
+        
+        A=A(2:imax-1,:);%skipping first zero row
+        B=B(2:imax-1);%skipping first zero entry
+        
+        %TDMA
+        T(2:imax-1,j)=myTDMA(A,B);
+    end
+%% 2
+%implicit in y: TDMA in Y direction and right to left sweep 
+
+    for j=jmax-1:-1:2
+        
+        %1st eq
+        i=2;
+        A(i,1)=0;%n
+        if j==jmax
+            A(i,2)=ap_noeast(i,j);
+        B(i,1)=a(i,j-1)*T(i,j-1)+ap_noeast(i,j)*T(i,j)*(1/W-1)...
+            +a(i-1,j)*T(i-1,j); %last term is North
+        else
+        A(i,2)=ap(i,j);%p
+        B(i,1)=a(i,j-1)*T(i,j-1)+ap(i,j)*T(i,j)*(1/W-1)...
+            +a(i,j+1)*T(i,j+1)+a(i-1,j)*T(i-1,j); %last term is North
+        end
+        A(i,3)=-a(i+1,2);%s
+
+        
+        %internal eqs
+        for i=3:imax-2
+            A(i,1)=-a(i-1,j);%n
+            if j==jmax
+                A(i,2)=ap_noeast(i,j);%
+                B(i,1)=a(i,j-1)*T(i,j-1)+ap_noeast(i,j)*T(i,j)*(1/W-1)...
+                ;
+            else
+                A(i,2)=ap(i,j);%p
+                B(i,1)=a(i,j-1)*T(i,j-1)+ap(i,j)*T(i,j)*(1/W-1)...
+                +a(i,j+1)*T(i,j+1);
+            end
+                A(i,3)=-a(i+1,j);%s
+
+        end
+        
+        %last eq
+        i=imax-1;%%%%%%%%%%%%%
+        A(imax-1,1)=-a(imax-2,j);%n
+        if j==jmax
+        A(imax-1,2)=ap_noeast(imax-1,j);%p
+        B(imax-1)=a(i,j-1)*T(i,j-1)+ap_noeast(i,j)*T(i,j)*(1/W-1)...
+            +a(i+1,j)*T(i+1,j);%last term is South    
+        else
+        A(imax-1,2)=ap(imax-1,j);%p
+        B(imax-1)=a(i,j-1)*T(i,j-1)+ap(i,j)*T(i,j)*(1/W-1)...
+            +a(i,j+1)*T(i,j+1)+a(i+1,j)*T(i+1,j);%last term is South    
+        end
+        A(imax-1,3)=0;%s
+        
+        
+        A=A(2:imax-1,:);%skipping first zero row
+        B=B(2:imax-1);%skipping first zero entry
+        
+        %TDMA
+        T(2:imax-1,j)=myTDMA(A,B);
+    end
+
+%% 3   
+    
+%implicit in x = TDMA in X direction and top to bottom sweep
+
+    for i=2:imax-1 %top to bottom 
+        
+        j=2; %first row first cell
+        A(j,1)=0;%w
+        A(j,2)=ap(i,j);%p
+        A(j,3)=-a(i,j+1);%e
+        B(j,1)=a(i-1,j)*T(i-1,j)+ap(i,j)*T(i,j)*(1/W-1)...
+            +a(i+1,j)*T(i+1,j)+a(i,j-1)*T(i,j-1); %last term is West
+        
+        for j=3:jmax-1
+            A(j,1)=-a(i,j-1);%w
+            A(j,2)=ap(i,j);%p
+            A(j,3)=-a(i,j+1);%e
+            B(j,1)=a(i-1,j)*T(i-1,j)+ap(i,j)*T(i,j)*(1/W-1)...
+                +a(i+1,j)*T(i+1,j);
+        end
+        %last cell
+        j=jmax;%%%%%%%%%%%%%
+        A(jmax,1)=-a(i,jmax-1);%w
+        A(jmax,2)=a(i-1,j)+a(i+1,j)+a(i,j-1); %ap(i,jmax-1);%p
+        A(jmax,3)=0;%e
+        B(jmax)=a(i-1,j)*T(i-1,j)+ap_noeast(i,j)*T(i,j)*(1/W-1)...
+            +a(i+1,j)*T(i+1,j); %no east term
+        
+        A=A(2:jmax,:);%skipping first zero row
+        B=B(2:jmax);%skipping first zero entry
+        
+        %TDMA
+        T(i,2:jmax)=myTDMA(A,B);
+    end    
+%% 4    
+%implicit in x(j changes internally): TDMA X direction
+%and sweeping from bottom to top
+
+      for i=imax-1:-1:2 %bottom to top 
+        
+        %last cell
+        j=jmax;%%%%%%%%%%%%%
+        A(jmax,1)=-a(i,jmax-1);%w
+        A(jmax,2)=a(i-1,j)+a(i+1,j)+a(i,j-1); %ap(i,jmax-1);%p
+        A(jmax,3)=0;%e
+        B(jmax)=a(i-1,j)*T(i-1,j)+ap_noeast(i,j)*T(i,j)*(1/W-1)...
+            +a(i+1,j)*T(i+1,j); %no east term
+        
+        for j=3:jmax-1
+            A(j,1)=-a(i,j-1);%w
+            A(j,2)=ap(i,j);%p
+            A(j,3)=-a(i,j+1);%e
+            B(j,1)=a(i-1,j)*T(i-1,j)+ap(i,j)*T(i,j)*(1/W-1)...
+                +a(i+1,j)*T(i+1,j);
+        end
+        
+        j=2; %first row first cell
+        A(j,1)=0;%w
+        A(j,2)=ap(i,j);%p
+        A(j,3)=-a(i,j+1);%e
+        B(j,1)=a(i-1,j)*T(i-1,j)+ap(i,j)*T(i,j)*(1/W-1)...
+            +a(i+1,j)*T(i+1,j)+a(i,j-1)*T(i,j-1); %last term is West
+        
+        
+        A=A(2:jmax,:);%skipping first zero row
+        B=B(2:jmax);%skipping first zero entry
+        
+        %TDMA
+        T(i,2:jmax)=myTDMA(A,B);
+    end      
+kk=kk+1;
+end   
+    
+%%
+subplot(1,2,1),contour(x,y,T),
+title('50C'),xlabel('x'),ylabel('y'),colorbar
+xlabel("100C")
+ylabel("50C")
+subplot(1,2,2),pcolor(x,y,T),shading interp,
+title('Temperature (Steady State)'),xlabel('x'),ylabel('y'),colorbar
+title('50C'),xlabel('x'),ylabel('y'),colorbar
+xlabel("100C")
+ylabel("50C")
+

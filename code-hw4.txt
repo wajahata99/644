@@ -1,0 +1,460 @@
+clear all;close all;
+
+cv_ii=1;
+cvs=[8,16,32,64,128];
+centerline=zeros(length(cvs),2);
+
+for alpha=1:length(cvs)
+
+ipcv=cvs(cv_ii); jpcv=cvs(cv_ii); 
+    
+ipmax=ipcv+2; jpmax=jpcv+2;
+iumax=ipcv+1; jumax=jpcv+2;
+ivmax=ipcv+2; jvmax=ipcv+1;
+iucv = ipcv-1; jucv = jpcv; 
+ivcv = ipcv; jvcv = jpcv-1;
+X=0.2; Y=0.2;dx=X/ipcv; dy=Y/jpcv;
+del_x=X/ipcv; del_y=X/ipcv;
+
+rho=998.3; mu=1.002e-3; Re=400;
+
+U      = zeros(iumax,jumax);
+U(2:end-1, 2:end-1) = 0.00001;
+V      = zeros(ivmax,jvmax);
+V(2:end-1, 2:end-1) = 0.00001;
+p   = zeros(ipmax,jpmax);            
+U_cr = zeros (iumax,jumax);
+V_cr = zeros (ivmax,jvmax);
+P_cr = zeros (ipmax,jpmax);
+b    = zeros (ipcv,jpcv);    
+
+U_Fw = zeros(iucv,jucv); U_Fe = zeros(iucv,jucv);
+U_Fs = zeros(iucv,jucv); U_Fn = zeros(iucv,jucv);
+
+V_Fw = zeros(ivcv,jvcv); V_Fe = zeros(ivcv,jvcv);
+V_Fs = zeros(ivcv,jvcv); V_Fn = zeros(ivcv,jvcv);
+
+p_aw = zeros (ipcv,jpcv); p_ae = zeros (ipcv,jpcv);
+p_as = zeros (ipcv,jpcv); p_an = zeros (ipcv,jpcv);
+
+%BC
+velocity=Re*mu/(rho*X); U(:,jumax)=velocity;U(:,1)=velocity;
+
+Wu=0.5;Wv=0.5;Wdu=1;Wdv=1;Wp=1;
+
+%%
+U_Dw = zeros(iucv,jucv);
+U_De = zeros(iucv,jucv);
+U_Ds = zeros(iucv,jucv);
+U_Dn = zeros(iucv,jucv);
+
+U_Dw(:,:) = mu*dy/del_x;
+U_De(:,:) = mu*dy/del_x;
+
+U_Ds(1,1) = mu*(1.5*dx)/(0.5*del_y);
+U_Ds(1,2:jucv) = mu*(1.5*dx)/del_y;
+U_Ds(2:iucv-1,1) = mu*dx/(0.5*del_y);
+U_Ds(2:iucv-1,2:jucv) = mu*dx/del_y;
+U_Ds(iucv,1) = mu*(1.5*dx)/(0.5*del_y);
+U_Ds(iucv,2:jucv) = mu*(1.5*dx)/del_y;
+
+U_Dn(1,1:jucv-1) = mu*(1.5*dx)/del_y;
+U_Dn(1,jucv) = mu*(1.5*dx)/(0.5*del_y);
+U_Dn(2:iucv-1,jucv) = mu*dx/(0.5*del_y);
+U_Dn(2:iucv-1,1:jucv-1) = mu*dx/del_y;
+U_Dn(iucv,1:jucv-1) = mu*(1.5*dx)/del_y;
+U_Dn(iucv,jucv) = mu*(1.5*dx)/(0.5*del_y);
+
+%% DIffusion strengths
+V_Dw = zeros(ivcv,jvcv);
+V_De = zeros(ivcv,jvcv);
+V_Ds = zeros(ivcv,jvcv);
+V_Dn = zeros(ivcv,jvcv);
+
+V_Ds(:,:) = mu*dx/del_y;
+V_Dn(:,:) = mu*dx/del_y;
+
+V_Dw(1,1) = mu*(1.5*dy)/(0.5*del_x);
+V_Dw(2:ivcv,1) = mu*(1.5*dy)/del_x;
+V_Dw(1,2:jvcv-1) = mu*dy/(0.5*del_x);
+V_Dw(2:ivcv,2:jvcv-1) = mu*dy/del_x;
+V_Dw(1,jvcv) = mu*(1.5*dy)/(0.5*del_x);
+V_Dw(2:ivcv,jvcv) = mu*(1.5*dy)/del_x;
+
+V_De(ivcv,1) = mu*(1.5*dy)/(0.5*del_x);
+V_De(1:ivcv-1,1) = mu*(1.5*dy)/del_x;
+V_De(ivcv,2:jvcv-1) = mu*dy/(0.5*del_x);
+V_De(1:ivcv-1,2:jvcv-1) = mu*dy/del_x;
+V_De(ivcv,jvcv) = mu*(1.5*dy)/(0.5*del_x);
+V_De(1:ivcv-1,jvcv) = mu*(1.5*dy)/del_x;
+
+%%
+res_u=1;res_v=1;res_p=1;
+tol_u_v=1e-6;
+tol_p=1e-5;
+k=1;
+
+
+while res_u >tol_u_v && res_v>tol_u_v && res_p > tol_p 
+%% U coefs
+for i = 1:iucv
+    U_Fw(i,:)=rho*U(i,2:jumax-1)*dy;
+end
+
+for i = 1:iucv
+    U_Fe(i,:)=rho*U(i+1,2:jumax-1)*dy;
+end
+
+for i = 1:iucv
+    U_Fs(i,:) = rho*0.5*(V(i+1,1:jvmax-1)+V(i+2,1:jvmax-1))*dx;
+end
+
+for i = 1:iucv
+    U_Fn(i,:) = rho*0.5*(V(i+1,2:jvmax)+V(i+2,2:jvmax))*dx;
+end
+
+Pw_abs = abs(U_Fw./U_Dw);
+Pe_abs = abs(U_Fe./U_De);
+Ps_abs = abs(U_Fs./U_Ds);
+Pn_abs = abs(U_Fn./U_Dn);
+
+%To avoid computational expense multiplying 5 times instead of raising to
+%power 5
+A_Pw = max (0, (1-0.1*Pw_abs).*(1-0.1*Pw_abs).*(1-0.1*Pw_abs).*(1-0.1*Pw_abs).*(1-0.1*Pw_abs));
+A_Pe = max (0, (1-0.1*Pe_abs).*(1-0.1*Pe_abs).*(1-0.1*Pe_abs).*(1-0.1*Pe_abs).*(1-0.1*Pe_abs));
+A_Ps = max (0, (1-0.1*Ps_abs).*(1-0.1*Ps_abs).*(1-0.1*Ps_abs).*(1-0.1*Ps_abs).*(1-0.1*Ps_abs));
+A_Pn = max (0, (1-0.1*Pn_abs).*(1-0.1*Pn_abs).*(1-0.1*Pn_abs).*(1-0.1*Pn_abs).*(1-0.1*Pn_abs));
+
+U_aw = U_Dw .*A_Pw +max(U_Fw,0);
+U_ae = U_De .*A_Pe +max(-U_Fe,0);
+U_as = U_Ds .*A_Ps +max(U_Fs,0);
+U_an = U_Dn .*A_Pn +max(-U_Fn,0);
+
+U_ap = U_aw+U_ae+U_as+U_an;
+
+%% U cals
+% % % % %
+% l % % %
+% i % % %
+% f % % % 
+% % % % %
+A = zeros(jucv, 3);
+B = zeros(jucv,1);
+
+for iu=1:iucv
+    ju=1; %f   
+    ui = iu+1; %to save indexing typing                    
+    uj = ju+1; 
+    
+    A(2:jucv,1) = -U_as(iu, 2:jucv);
+    A(1:jucv,2) = U_ap(iu, 1:jucv)./Wu;
+    A(1:jucv-1,3) = -U_an(iu, 1:jucv-1);                   
+    B(ju) = U_aw(iu,ju)* U (ui-1,uj)+U_ae(iu,ju)*U(ui+1,uj)...
+           +U_as(iu,ju)*U(ui,uj-1)+dy*(p(ui,uj)-p(ui+1,uj)) ...
+           +U_ap(iu,ju)*U(ui,uj)*(1/Wu-1);
+       
+    for ju=2:jucv-1 %i          
+        uj = ju+1;%updating because it is being swept             
+        B(ju) = U_aw(iu,ju)* U (ui-1,uj)+U_ae(iu,ju)*U(ui+1,uj)...
+        +dy*(p(ui,uj)-p(ui+1,uj))+U_ap(iu,ju)*U(ui,uj)*(1/Wu-1);
+    end      
+       
+    ju=jucv;   %l                 
+    uj = ju+1;                 
+    B(ju) = U_aw(iu,ju)* U (ui-1,uj)+U_ae(iu,ju)*U(ui+1,uj)...
+           +U_an(iu,ju)*U(ui,uj+1)+dy*(p(ui,uj)-p(ui+1,uj)) ...
+           +U_ap(iu,ju)*U(ui,uj)*(1/Wu-1);
+    
+    U(ui,2:jumax-1)=myTDMA(A,B);    
+end
+
+A = zeros(iucv, 3);
+B = zeros(iucv,1);
+% % % % %
+% % % % %
+% % % % %
+% f i l % 
+% % % % %
+
+for ju=1:jucv
+    iu = 1;
+    uj = ju+1;   %to save indexing effort          
+    ui = iu+1;   
+    
+    A(2:iucv,1)=-U_aw(2:iucv,ju);
+    A(1:iucv,2)=U_ap(1:iucv,ju)./Wu;
+    A(1:iucv-1,3)=-U_ae(1:iucv-1,ju);         
+    B(iu) = U_as(iu,ju)* U (ui,uj-1)+U_an(iu,ju)*U(ui,uj+1)...
+           +U_aw(iu,ju)*U(ui-1,uj)+dy*(p(ui,uj)-p(ui+1,uj)) ...
+           +U_ap(iu,ju)*U(ui,uj)*(1/Wu-1);
+
+    for iu = 2:iucv-1     
+        ui = iu+1;       
+        B(iu) = U_as(iu,ju)* U (ui,uj-1)+U_an(iu,ju)*U(ui,uj+1)...
+               +dy*(p(ui,uj)-p(ui+1,uj))+U_ap(iu,ju)*U(ui,uj)*(1/Wu-1);
+    end       
+       
+    iu = iucv;%l     
+    ui = iu+1; 
+    B(iu) = U_as(iu,ju)* U (ui,uj-1)+U_an(iu,ju)*U(ui,uj+1)...
+           +U_ae(iu,ju)*U(ui+1,uj)+dy*(p(ui,uj)-p(ui+1,uj)) ...
+           +U_ap(iu,ju)*U(ui,uj)*(1/Wu-1);
+    
+    U(2:iumax-1,uj)=myTDMA(A,B);
+end
+
+%% V_coefs
+
+for j = 1:jvcv
+    V_Fs(:,j)=rho*0.5*(V(2:ivmax-1,j)+V(2:ivmax-1,j+1))*dx;
+end
+
+for j = 1:jvcv
+    V_Fn(:,j)=rho*0.5*(V(2:ivmax-1,j+1)+V(2:ivmax-1,j+2))*dx;
+end
+
+for j = 1:jvcv
+    V_Fw(:,j) = rho*0.5*(U(1:iumax-1,j+1)+U(1:iumax-1,j+2))*dy;
+end
+
+for j = 1:jvcv
+    V_Fe(:,j) = rho*0.5*(U(2:iumax,j+1)+U(2:iumax,j+2))*dy;
+end
+
+Pw_abs = abs(V_Fw./V_Dw);
+Pe_abs = abs(V_Fe./V_De);
+Ps_abs = abs(V_Fs./V_Ds);
+Pn_abs = abs(V_Fn./V_Dn);
+
+A_Pw = max (0, (1-0.1*Pw_abs).*(1-0.1*Pw_abs).*(1-0.1*Pw_abs).*(1-0.1*Pw_abs).*(1-0.1*Pw_abs));
+A_Pe = max (0, (1-0.1*Pe_abs).*(1-0.1*Pe_abs).*(1-0.1*Pe_abs).*(1-0.1*Pe_abs).*(1-0.1*Pe_abs));
+A_Ps = max (0, (1-0.1*Ps_abs).*(1-0.1*Ps_abs).*(1-0.1*Ps_abs).*(1-0.1*Ps_abs).*(1-0.1*Ps_abs));
+A_Pn = max (0, (1-0.1*Pn_abs).*(1-0.1*Pn_abs).*(1-0.1*Pn_abs).*(1-0.1*Pn_abs).*(1-0.1*Pn_abs));
+
+V_aw = V_Dw .*A_Pw +max(V_Fw,0);
+V_ae = V_De .*A_Pe +max(-V_Fe,0);
+V_as = V_Ds .*A_Ps +max(V_Fs,0);
+V_an = V_Dn .*A_Pn +max(-V_Fn,0);
+
+V_ap = V_aw+V_ae+V_as+V_an;
+
+%% V cals
+A = zeros(jvcv, 3);
+B = zeros(jvcv,1);
+
+for iv=1:ivcv    
+    vi = iv+1;                     
+    A(2:jvcv,1) = -V_as(iv, 2:jvcv);
+    A(1:jvcv,2) = V_ap(iv, 1:jvcv)./Wv;
+    A(1:jvcv-1,3) = -V_an(iv, 1:jvcv-1);
+    
+    jv=1;                       
+    vj = jv+1;                 
+    B(jv) = V_aw(iv,jv)* V(vi-1,vj)+V_ae(iv,jv)*V(vi+1,vj)...
+           +V_as(iv,jv)*V(vi,vj-1) ...
+           +dx*(p(vi,vj)-p(vi,vj+1)) ...
+           +V_ap(iv,jv)*V(vi,vj)*(1/Wv-1);
+       
+    for jv=2:jvcv-1%i            
+        vj = jv+1;             
+        B(jv) = V_aw(iv,jv)* V(vi-1,vj)+V_ae(iv,jv)*V(vi+1,vj)...
+        +dx*(p(vi,vj)-p(vi,vj+1))+V_ap(iv,jv)*V(vi,vj)*(1/Wv-1);
+    end
+           
+    jv=jvcv;%l                    
+    vj = jv+1;                 
+    B(jv) = V_aw(iv,jv)* V(vi-1,vj)+V_ae(iv,jv)*V(vi+1,vj)...
+           +V_an(iv,jv)*V(vi,vj+1) ...
+           +dx*(p(vi,vj)-p(vi,vj+1)) ...
+           +V_ap(iv,jv)*V(vi,vj)*(1/Wv-1);
+         
+    V(vi,2:jvmax-1)=myTDMA(A,B);    
+end
+
+A = zeros(ivcv, 3);
+B = zeros(ivcv,1);
+
+for jv=1:jvcv
+    vj = jv+1;   
+    A(2:ivcv,1)=-V_aw(2:ivcv,jv);
+    A(1:ivcv,2)=V_ap(1:ivcv,jv)./Wv;
+    A(1:ivcv-1,3)=-V_ae(1:ivcv-1,jv);
+    
+    iv = 1;     
+    vi = iv+1; 
+    B(iv) = V_as(iv,jv)* V(vi,vj-1)+V_an(iv,jv)*V(vi,vj+1)...
+           +V_aw(iv,jv)*V(vi-1,vj) ...
+           +dx*(p(vi,vj)-p(vi,vj+1)) ...
+           +V_ap(iv,jv)*V(vi,vj)*(1/Wv-1);
+       
+    iv = ivcv;     
+    vi = iv+1; 
+    B(iv) = V_as(iv,jv)* V(vi,vj-1)+V_an(iv,jv)*V(vi,vj+1)...
+           +V_ae(iv,jv)*V(vi+1,vj) ...
+           +dx*(p(vi,vj)-p(vi,vj+1)) ...
+           +V_ap(iv,jv)*V(vi,vj)*(1/Wv-1);
+    
+    for iv = 2:ivcv-1    
+        vi = iv+1;      
+        B(iv) = V_as(iv,jv)* V(vi,vj-1)+V_an(iv,jv)*V(vi,vj+1)...
+               +dx*(p(vi,vj)-p(vi,vj+1))+V_ap(iv,jv)*V(vi,vj)*(1/Wv-1);
+    end
+    
+    V(2:ivmax-1,vj)=myTDMA(A,B);  
+end
+
+%% du and dv
+du = zeros(iumax,jumax);
+dv = zeros(ivmax,jvmax);
+du(2:iumax-1,2:jumax-1) = dy./U_ap;
+dv(2:ivmax-1,2:jvmax-1) = dy./V_ap;
+
+%% P' coefs
+
+for j = 1:jpcv    
+    for i = 1:ipcv
+            p_aw(i,j) = rho*du(i,j+1)*dy;            
+            p_ae(i,j) = rho*du(i+1,j+1)*dy;
+            p_as(i,j) = rho*dv(i+1,j)*dx;
+            p_an(i,j) = rho*dv(i+1,j+1)*dx;
+            b(i,j) = rho*(U(i,j+1) - U(i+1,j+1))*dy + rho*(V(i+1,j) - V(i+1,j+1))*dx;
+    end
+end
+p_ap = p_aw+p_ae+p_as+p_an;
+
+%% P' calc
+p_cr = zeros(ipmax,jpmax);%Need resetting every time
+A = zeros(jpcv, 3);
+B = zeros(jpcv,1);
+
+for ip=1:ipcv    
+    pi = ip+1;                     
+    A(2:jpcv,1) = -p_as(ip, 2:jpcv);
+    A(1:jpcv,2) = p_ap(ip, 1:jpcv);
+    A(1:jpcv-1,3) = -p_an(ip, 1:jpcv-1);
+    
+    jp=1;                       
+    pj = jp+1;                 
+    B(jp) = p_aw(ip,jp)* p_cr(pi-1,pj)+p_ae(ip,jp)*p_cr(pi+1,pj)...
+           +p_as(ip,jp)*p_cr(pi,pj-1)+b(ip,jp);
+       
+    for jp=2:jpcv-1          
+        pj = jp+1;             
+        B(jp) = p_aw(ip,jp)* p_cr(pi-1,pj)+p_ae(ip,jp)*p_cr(pi+1,pj)...
+                +b(ip,jp);
+    end        
+    jp=jpcv;                    
+    pj = jp+1;                 
+    B(jp) = p_aw(ip,jp)* p_cr(pi-1,pj)+p_ae(ip,jp)*p_cr(pi+1,pj)...
+           +p_an(ip,jp)*p_cr(pi,pj+1)+b(ip,jp);
+       
+    p_cr(pi,2:jpmax-1)=myTDMA(A,B);    
+end
+
+A = zeros(ipcv, 3);
+B = zeros(ipcv,1);
+
+for jp=jpcv:-1:1
+    ip = 1;%f
+    pj = jp+1;                   
+    pi = ip+1;
+    A(2:ipcv,1)=-p_aw(2:ipcv,jp);
+    A(1:ipcv,2)=p_ap(1:ipcv,jp);
+    A(1:ipcv-1,3)=-p_ae(1:ipcv-1,jp);
+    B(ip) = p_as(ip,jp)* p_cr(pi,pj-1)+p_an(ip,jp)*p_cr(pi,pj+1)...
+           +p_aw(ip,jp)*p_cr(pi-1,pj)+b(ip,jp);
+       
+    for ip = 2:ipcv-1%i     
+        pi = ip+1;        
+        B(ip) = p_as(ip,jp)* p_cr(pi,pj-1)+p_an(ip,jp)*p_cr(pi,pj+1)...
+                +b(ip,jp);
+    end
+    
+    ip = ipcv;%l     
+    pi = ip+1; 
+    B(ip) =p_as(ip,jp)* p_cr(pi,pj-1)+p_an(ip,jp)*p_cr(pi,pj+1)...
+           +p_ae(ip,jp)*p_cr(pi+1,pj)+b(ip,jp);
+    
+   p_cr(2:ipmax-1,pj)=myTDMA(A,B);  
+end
+
+%% U,V and P correction 
+%vectorized
+U_cr(2:iumax-1, 2:jumax-1) = du(2:iumax-1, 2:jumax-1).*...
+    (p_cr(2:iumax-1, 2:jumax-1) - p_cr(3:iumax, 2:jumax-1));
+V_cr(2:ivmax-1,2:jvmax-1) = dv(2:ivmax-1,2:jvmax-1).*...
+    (p_cr(2:ivmax-1,2:jvmax-1) - p_cr(2:ivmax-1,3:jvmax));
+
+U = U + U_cr;
+V = V + V_cr;
+p = p + p_cr .* Wp;
+
+%% convergence
+aa_u = U_ap.*U(2:iumax-1,2:jumax-1);
+a_unb = U_aw.*U(1:iumax-2,2:jumax-1)+U_ae.*U(3:iumax,2:jumax-1)...
+         +U_as.*U(2:iumax-1,1:jumax-2)+U_an.*U(2:iumax-1,3:jumax)...
+         +dy*(p(2:iumax-1,2:jumax-1)-p(3:iumax,2:jumax-1));
+
+aa_v = V_ap.*V(2:ivmax-1,2:jvmax-1);
+a_vnb = V_aw.*V(1:ivmax-2,2:jvmax-1)+V_ae.*V(3:ivmax,2:jvmax-1)...
+         +V_as.*V(2:ivmax-1,1:jvmax-2)+V_an.*V(2:ivmax-1,3:jvmax)...
+         +dx*(p(2:ivmax-1,2:jvmax-1)-p(2:ivmax-1,3:jvmax));
+
+mass_bal = (U(1:iumax-1,2:jumax-1) - U(2:iumax,2:jumax-1))*dy ...
+        +(V(2:ivmax-1,1:jvmax-1) - V(2:ivmax-1,2:jvmax))*dx;
+        
+res_u = sum(sum(abs(aa_u-a_unb)))/sum(sum(abs(aa_u)));
+res_v = sum(sum(abs(aa_v-a_vnb)))/sum(sum(abs(aa_v)));
+res_p = sum(sum(abs(mass_bal)))/velocity/X;
+
+res(:,k)=[res_u,res_v,res_p];
+%% iter count
+k=k+1;
+
+%%
+end
+centerline(cv_ii,1)=U((ipmax)/2,(jpmax)/2);
+centerline(cv_ii,2)=V((ipmax)/2,(jpmax)/2);
+cv_ii=cv_ii+1;
+end
+
+figure(5)
+hold on
+plot(cvs,centerline(:,1))
+plot(cvs,centerline(:,2))
+legend('U','V')
+xlabel("Number of Control volumes")
+ylabel("U and V")
+hold off
+% figure(1)
+% contourf(U)
+% figure(2)
+% contourf(V)
+% figure(3)
+% contourf(p)
+% figure(4)
+% plot(res(1,:))
+
+ function x=myTDMA(A,r)
+ e=A(:,1);
+ f=A(:,2);
+ g=A(:,3);
+ 
+ n=length(r);
+ x=zeros(n,1);
+ for k=2:n
+    % decomposition LU
+     e(k)=e(k)/f(k-1);
+     f(k)=f(k)-e(k)*g(k-1);
+ end
+ for k=2:n
+     %forward sub
+     r(k)=r(k)-e(k)*r(k-1);
+ end
+ 
+ %backward sub
+ x(n)=r(n)/f(n);
+ for k=n-1:-1:1
+     x(k)=(r(k)-g(k)*x(k+1))/f(k);
+ end
+ end
